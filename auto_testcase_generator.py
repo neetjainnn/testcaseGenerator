@@ -216,83 +216,80 @@ def automate_all_sprints():
             sprint_name = sprint["name"]
             config = entry["config"]
 
+
             try:
                 goal = sprint.get("goal", "")
-                if not goal:
-                    print(f"Sprint '{sprint_name}' on board '{board_name}' has no goal. Skipping (no Confluence link).")
-                    continue
-                match = re.search(r"https://[^\s]+/wiki[^\s]*", goal)
-                if not match:
-                    print(f"Sprint '{sprint_name}' on board '{board_name}' has no Confluence link in goal. Skipping.")
-                    continue
-
-                confluence_link = match.group(0)
-                # Extract Confluence page ID (robust for various URL formats)
-                page_id_match = re.search(r"/(\d+)(?:/|$)", confluence_link)
-                if not page_id_match:
-                    print(f"Sprint '{sprint_name}' on board '{board_name}' has a Confluence link but no page ID could be extracted. Skipping.")
-                    continue
-                page_id = page_id_match.group(1)
-
-                if page_id in processed_pages:
-                    print(f"Sprint '{sprint_name}' on board '{board_name}': Test cases already generated for Confluence page {page_id}. Skipping.")
-                    continue
-
                 AUTH = HTTPBasicAuth(config["JIRA_EMAIL"], config["JIRA_API_TOKEN"])
-                CONFLUENCE_BASE = config["CONFLUENCE_BASE"]
                 JIRA_BASE = config["JIRA_BASE"]
                 SLACK_WEBHOOK_URL = config["SLACK_WEBHOOK_URL"]
-
-                # Get Confluence page text
-                page_id_for_text = [part for part in confluence_link.split("/") if part.isdigit()][0]
-                response = requests.get(
-                    f"{CONFLUENCE_BASE}/rest/api/content/{page_id_for_text}?expand=body.storage",
-                    auth=AUTH,
-                    headers={"Accept": "application/json"}
-                )
-                response.raise_for_status()
-                content = response.json()
-                raw_html = content["body"]["storage"]["value"]
-                document_text = BeautifulSoup(raw_html, "html.parser").get_text()
-
-                filename = f"{board_name.replace(' ', '_')}_{sprint_name.replace(' ', '_')}_testcases.xlsx"
-                generate_test_cases(document_text, GEMINI_API_KEY, filename)
-
-                # Use correct config for Jira issue/attachment
+                # 1. Confluence page in sprint goal
+                match = re.search(r"https://[^\s]+/wiki[^\s]*", goal)
+                confluence_attached = False
+                if match:
+                    confluence_link = match.group(0)
+                    page_id_match = re.search(r"/(\d+)(?:/|$)", confluence_link)
+                    if page_id_match:
+                        page_id = page_id_match.group(1)
+                        if page_id not in processed_pages:
+                            CONFLUENCE_BASE = config["CONFLUENCE_BASE"]
+                            page_id_for_text = [part for part in confluence_link.split("/") if part.isdigit()][0]
+                            response = requests.get(
+                                f"{CONFLUENCE_BASE}/rest/api/content/{page_id_for_text}?expand=body.storage",
+                                auth=AUTH,
+                                headers={"Accept": "application/json"}
+                            )
+                            response.raise_for_status()
+                            content = response.json()
+                            raw_html = content["body"]["storage"]["value"]
+                            document_text = BeautifulSoup(raw_html, "html.parser").get_text()
+                            filename = f"{board_name.replace(' ', '_')}_{sprint_name.replace(' ', '_')}_confluence_testcases.xlsx"
+                            generate_test_cases(document_text, GEMINI_API_KEY, filename)
+                            # Attach to all issues
+                            url_issues = f"{JIRA_BASE}/rest/agile/1.0/sprint/{sprint_id}/issue"
+                            issues = requests.get(url_issues, auth=AUTH).json().get("issues", [])
+                            for issue in issues:
+                                issue_key = issue["key"]
+                                url_attach = f"{JIRA_BASE}/rest/api/3/issue/{issue_key}/attachments"
+                                headers = {"X-Atlassian-Token": "no-check"}
+                                with open(filename, "rb") as f:
+                                    files = {"file": (os.path.basename(filename), f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+                                    requests.post(url_attach, headers=headers, auth=AUTH, files=files)
+                                send_slack_notification(f"Confluence test cases attached to {issue_key} in *{sprint_name}* (`{board_name}`).")
+                            processed_pages.add(page_id)
+                            updated = True
+                            confluence_attached = True
+                # 2. For each issue: gather all info and generate one master test case
                 url_issues = f"{JIRA_BASE}/rest/agile/1.0/sprint/{sprint_id}/issue"
-                response = requests.get(url_issues, auth=AUTH)
-                response.raise_for_status()
-
-                issues = response.json().get("issues", [])
-                if issues:
-                    attached_issues = []
-                    for issue in issues:
-                        issue_key = issue["key"]
-                        url_attach = f"{JIRA_BASE}/rest/api/3/issue/{issue_key}/attachments"
-                        headers = {"X-Atlassian-Token": "no-check"}
-                        with open(filename, "rb") as f:
-                            files = {
-                                "file": (
-                                    os.path.basename(filename),
-                                    f,
-                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                                )
-                            }
-                            response_attach = requests.post(url_attach, headers=headers, auth=AUTH, files=files)
-                            response_attach.raise_for_status()
-                        attached_issues.append(issue_key)
-                    send_slack_notification(
-                        f"Test cases generated and attached to issues {', '.join(attached_issues)} in *{sprint_name}* (`{board_name}`)."
-                    )
-                else:
-                    print(f"Sprint '{sprint_name}' on board '{board_name}': No issues found. Skipped attachment.")
-                    send_slack_notification(
-                        f"⚠️ No issues found in *{sprint_name}* (`{board_name}`). Skipped attachment."
-                    )
-
-                processed_pages.add(page_id)
-                updated = True
-
+                issues = requests.get(url_issues, auth=AUTH).json().get("issues", [])
+                for issue in issues:
+                    issue_key = issue["key"]
+                    fields = issue.get("fields", {})
+                    # Gather all content: description, summary, text attachments
+                    master_content = []
+                    if fields.get("summary"):
+                        master_content.append(f"Summary:\n{fields['summary']}")
+                    if fields.get("description"):
+                        master_content.append(f"Description:\n{fields['description']}")
+                    for attach in fields.get("attachment", []):
+                        filename = attach.get("filename", "")
+                        if filename.endswith(".txt"):
+                            file_url = attach.get("content")
+                            file_text = requests.get(file_url, auth=AUTH).text
+                            master_content.append(f"Attachment ({filename}):\n{file_text}")
+                    if master_content:
+                        combined_text = "\n\n".join(master_content)
+                        master_hash = hash(combined_text)
+                        if master_hash not in processed_pages:
+                            outname = f"{issue_key}_master_testcases.xlsx"
+                            generate_test_cases(combined_text, GEMINI_API_KEY, outname)
+                            url_attach = f"{JIRA_BASE}/rest/api/3/issue/{issue_key}/attachments"
+                            headers = {"X-Atlassian-Token": "no-check"}
+                            with open(outname, "rb") as f:
+                                files = {"file": (os.path.basename(outname), f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+                                requests.post(url_attach, headers=headers, auth=AUTH, files=files)
+                            send_slack_notification(f"Master test cases attached to {issue_key} in *{sprint_name}* (`{board_name}`).")
+                            processed_pages.add(master_hash)
+                            updated = True
             except Exception as e:
                 print(f"Sprint '{sprint_name}' on board '{board_name}': Exception occurred: {str(e)}")
                 send_slack_notification(
