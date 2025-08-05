@@ -75,7 +75,8 @@ def send_slack_notification(message, config):
     payload = {"text": message}
     requests.post(config["SLACK_WEBHOOK_URL"], json=payload)
 
-def automate_specific_sprint(board_name_input, sprint_name_input):
+
+def automate_specific_sprint_by_id(board_name_input, sprint_id_input):
     processed = load_processed_pages()
     updated = False
 
@@ -88,20 +89,23 @@ def automate_specific_sprint(board_name_input, sprint_name_input):
         try:
             boards_url = f"{JIRA_BASE}/rest/agile/1.0/board"
             boards = requests.get(boards_url, auth=auth).json().get("values", [])
+            print("[DEBUG] Boards fetched from Jira:")
+            for b in boards:
+                print(f"  - '{b['name']}'")
             board = next((b for b in boards if b["name"].lower() == board_name_input.lower()), None)
             if not board:
+                print(f"[DEBUG] Board '{board_name_input}' not found in Jira boards.")
                 continue
 
             board_id = board["id"]
-            sprints_url = f"{JIRA_BASE}/rest/agile/1.0/board/{board_id}/sprint"
-            sprints = requests.get(sprints_url, auth=auth).json().get("values", [])
-            sprint = next((s for s in sprints if s["name"].lower() == sprint_name_input.lower()), None)
-            if not sprint:
+            # Fetch sprint details by ID
+            sprint_url = f"{JIRA_BASE}/rest/agile/1.0/sprint/{sprint_id_input}"
+            sprint_resp = requests.get(sprint_url, auth=auth)
+            if sprint_resp.status_code != 200:
+                print(f"[DEBUG] Sprint ID '{sprint_id_input}' not found in Jira.")
                 continue
-
-            sprint_id = sprint["id"]
-            sprint_name = sprint["name"]
-            board_name = board["name"]
+            sprint = sprint_resp.json()
+            sprint_name = sprint.get("name", f"sprint_{sprint_id_input}")
 
             # 1. Extract test cases from Confluence doc (in sprint goal)
             goal = sprint.get("goal", "")
@@ -131,7 +135,7 @@ def automate_specific_sprint(board_name_input, sprint_name_input):
                                 filename = f"{sprint_name.replace(' ', '_')}_confluence_testcases.xlsx"
                                 generate_test_cases(text, GEMINI_API_KEY, filename)
 
-                                issues = requests.get(f"{JIRA_BASE}/rest/agile/1.0/sprint/{sprint_id}/issue", auth=auth).json().get("issues", [])
+                                issues = requests.get(f"{JIRA_BASE}/rest/agile/1.0/sprint/{sprint_id_input}/issue", auth=auth).json().get("issues", [])
                                 for issue in issues:
                                     key = issue["key"]
                                     with open(filename, "rb") as f:
@@ -146,7 +150,7 @@ def automate_specific_sprint(board_name_input, sprint_name_input):
                                 updated = True
 
             # 2. Extract test cases from each issue (summary, description, txt files)
-            issues = requests.get(f"{JIRA_BASE}/rest/agile/1.0/sprint/{sprint_id}/issue", auth=auth).json().get("issues", [])
+            issues = requests.get(f"{JIRA_BASE}/rest/agile/1.0/sprint/{sprint_id_input}/issue", auth=auth).json().get("issues", [])
             for issue in issues:
                 key = issue["key"]
                 fields = issue.get("fields", {})
@@ -179,7 +183,7 @@ def automate_specific_sprint(board_name_input, sprint_name_input):
                         updated = True
 
         except Exception as e:
-            send_slack_notification(f"❌ Error in sprint *{sprint_name_input}* on board *{board_name_input}*: {str(e)}", config)
+            send_slack_notification(f"❌ Error in sprint ID *{sprint_id_input}* on board *{board_name_input}*: {str(e)}", config)
 
     if updated:
         save_processed_pages(processed)
@@ -187,6 +191,6 @@ def automate_specific_sprint(board_name_input, sprint_name_input):
 if __name__ == "__main__":
     print("🔷 Enter the Sprint Board Name:", end=" ")
     board_input = input().strip()
-    print("🟢 Enter the Sprint Name: ", end=" ")
-    sprint_input = input().strip()
-    automate_specific_sprint(board_input, sprint_input)
+    print("🟢 Enter the Sprint ID: ", end=" ")
+    sprint_id_input = input().strip()
+    automate_specific_sprint_by_id(board_input, sprint_id_input)
