@@ -1,198 +1,93 @@
-# 🧪 Automated Test Case Generator (Jira + Confluence + Gemini + Slack)
+# 🧪 Automated Test Case Generator from Jira & Confluence
 
-This repository contains a powerful Python script that automates the generation of test cases by integrating **Jira**, **Confluence**, **Google Gemini**, and **Slack**.
-
-> ⚡️ It pulls sprint issues and Confluence documents, generates detailed test cases using Gemini AI, attaches them to Jira issues, and posts real-time notifications to Slack.
+This Python automation script connects to **Jira and Confluence**, reads issue and document content, and automatically generates test cases using **Google Gemini (Generative AI)**. It attaches those test cases back to the Jira issues and sends updates to **Slack**.
 
 ---
 
-## 🔍 Use Case
+## 🚀 Features
 
-This script is ideal for:
-
-- QA teams who want automated, consistent test case generation
-- Product & Sprint managers looking to reduce manual documentation
-- Teams using Jira & Confluence for agile project tracking
-- Fast, one-click test case creation at scale using AI
-
----
-
-## 📦 Features
-
-- 🔁 **Supports multiple Jira domains** via single config file
-- 📥 **Fetches the latest active sprint** based on board/sprint name input
-- 📄 Extracts **Confluence content from sprint goal**
-- 🧾 Parses **summary, description, and `.txt` attachments** of each issue
-- 🤖 Sends prompts to **Gemini AI** to generate 30–40 scenario-based test cases
-- 📎 Attaches Excel test cases (`.xlsx`) to respective Jira issues
-- 📢 Sends real-time **Slack notifications**
-- 🔒 Prevents duplicate generation using content **hashing & history tracking**
+- Fetches Jira Sprint details using Board Name and Sprint ID
+- Extracts:
+  - Issue Summary
+  - Issue Description
+  - `.txt` attachments
+  - Sprint Goal (Confluence URL)
+- Generates 30–40 scenario-based test cases via Google Gemini API
+- Saves test cases in Excel format
+- Attaches Excel file back to respective Jira issue
+- Sends notification to Slack
+- Caches processed items to avoid duplication
 
 ---
 
-## 📁 Folder Structure
-testCaseAutomation/
-│
-├── auto_testcase_generator.py # Main script
-├── config.json # Stores domain credentials
-├── processed_confluence_pages.json # History of processed data
-├── README.md # This file
-├── requirements.txt # Dependencies
+## 🛠️ Setup Instructions
 
-
----
-
-## 🛠️ Setup & Installation
-
-1. **Clone this repository**
+### 1. 🔧 Install Dependencies
 
 ```bash
-git clone https://github.com/<your-username>/testCaseAutomation.git
-cd testCaseAutomation
+pip install requests pandas beautifulsoup4 openpyxl
+2. 🧾 Create config.json
+Add all your Jira domain configurations in the following format:
 
-
-pip install -r requirements.txt
-
-
-// config.json
+json
+Copy
+Edit
 {
   "your-domain.atlassian.net": {
-    "JIRA_EMAIL": "your_email@example.com",
-    "JIRA_API_TOKEN": "your_jira_api_token",
     "JIRA_BASE": "https://your-domain.atlassian.net",
+    "JIRA_EMAIL": "your-email@example.com",
+    "JIRA_API_TOKEN": "your-jira-api-token",
     "CONFLUENCE_BASE": "https://your-domain.atlassian.net/wiki",
-    "GEMINI_API_KEY": "your_gemini_api_key",
-    "SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+    "SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/...",
+    "GEMINI_API_KEY": "your-gemini-api-key"
   },
-
   "another-domain.atlassian.net": {
-    "JIRA_EMAIL": "another@example.com",
-    "JIRA_API_TOKEN": "another_jira_token",
     "JIRA_BASE": "https://another-domain.atlassian.net",
+    "JIRA_EMAIL": "another-email@example.com",
+    "JIRA_API_TOKEN": "another-api-token",
     "CONFLUENCE_BASE": "https://another-domain.atlassian.net/wiki",
-    "GEMINI_API_KEY": "another_gemini_key",
-    "SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/ABC/DEF/GHI"
+    "SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/...",
+    "GEMINI_API_KEY": "another-gemini-api-key"
   }
 }
+🔐 Keep this file secure. Do not upload it to GitHub.
 
-python auto_testcase_generator.py
-
-When prompted:
-
-yaml
-Copy
-Edit
-🔷 Enter the Sprint Board Name: SYMREC
-🟢 Enter the Sprint Name: SYMREC Sprint 4
-The script will:
-
-Search across all configured domains
-
-Match the board and sprint name
-
-Pull issues and Confluence content
-
-Generate & attach test cases
-
-Post updates to Slack
-
-💡 How It Works (Simplified Flow)
-🔎 Get input for board name and sprint name
-
-🌐 Search through all domains to find the matching sprint
-
-📂 Parse issues for summary, description, and .txt attachments
-
-📄 Extract sprint goal Confluence link
-
-🤖 Send prompt to Gemini AI with content
-
-📊 Receive and parse AI response (JSON to Excel)
-
-📎 Attach test cases back to Jira issue
-
-🔔 Send notification to Slack
-
-📌 Skip re-processing already handled data
-
-🛑 Re-run Safety
-✅ No duplicates: The script saves hashes of content and page IDs
-
-✅ Re-runs only generate test cases for new/unprocessed items
-
-✅ All processed items are tracked in processed_confluence_pages.json
-
-📬 Slack Notification Samples
-✅ Confluence test cases attached to *SYMREC-104* in *SYMREC Sprint 4*
-
-🧪 Test cases generated from issue *SYMREC-105* and attached.
-
-❌ Error in sprint *SYMREC Sprint 4* on board *SYMREC*: [Error Details]
-
-📄 Test Case Format
-All generated Excel sheets include:
-
-Scenario	TestCaseID	Description	Steps	ExpectedResult
-
-🔐 Gemini Prompt Example
-txt
-Copy
-Edit
-You are a highly experienced QA Engineer. Analyze the provided document and generate 30–40 scenario-based test cases.
-Include: Scenario, TestCaseID, Description, Steps, ExpectedResult
-🔗 References
-Jira REST API
-
-Confluence REST API
-
-Google Gemini API
-
-Slack Incoming Webhooks
-
-🧪 Sample Output Files
-SYMREC_Sprint_4_confluence_testcases.xlsx
-
-SYMREC-105_issue_testcases.xlsx
-
-These are automatically created and attached.
-
-📋 Requirements
-txt
-Copy
-Edit
-requests
-pandas
-beautifulsoup4
-openpyxl
-Install with:
-
+3. 🖥️ Run the Script
 bash
 Copy
 Edit
-pip install -r requirements.txt
-🙋 FAQ
-Q: Can I run this on multiple domains?
-A: Yes! Add multiple entries in your config.json.
+python auto_testcase_generator.py
+You'll be prompted to enter:
 
-Q: What if I run it again for the same sprint?
-A: Test cases will only be generated for new or updated issues.
+Sprint Board Name (e.g., SYMBO Scrum)
 
-Q: Do I need to manually enter board/sprint every time?
-A: Yes, the script takes sprint and board names as input at runtime.
+Sprint ID (e.g., 328)
 
-🤝 Contributing
-Pull requests are welcome! For bugs or suggestions, open an issue.
+You can find these in your Jira backlog or URL.
 
-📜 License
-This project is licensed under the MIT License.
+📁 Files & Output
+Generated test cases are saved as .xlsx files (Excel)
 
-👨‍💻 Author
-Developed by Neet Jain
+Each file is attached to Jira issues automatically
 
-yaml
+Already-processed Confluence pages and issues are tracked in:
+
+pgsql
 Copy
 Edit
+processed_confluence_pages.json
+💡 Notes
+✅ Test cases are generated only once per unique issue or page
 
+🧠 Uses Google Gemini Flash model for fast & structured response
 
+⚠️ Sprint name is not used — you must provide the correct Sprint ID
 
+💬 Errors and updates are sent to your configured Slack channel
+
+🤝 Contributions
+Pull requests are welcome. For major changes, please open an issue first to discuss your ideas.
+
+📜 License
+This project is for internal use and automation. Feel free to customize it as needed.
 
