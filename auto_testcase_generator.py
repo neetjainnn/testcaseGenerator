@@ -98,7 +98,8 @@ def automate_specific_sprint_by_id(board_name_input, sprint_id_input):
                 continue
 
             board_id = board["id"]
-            # Fetch sprint details by ID
+            
+            # Fetching sprint details by ID
             sprint_url = f"{JIRA_BASE}/rest/agile/1.0/sprint/{sprint_id_input}"
             sprint_resp = requests.get(sprint_url, auth=auth)
             if sprint_resp.status_code != 200:
@@ -107,7 +108,7 @@ def automate_specific_sprint_by_id(board_name_input, sprint_id_input):
             sprint = sprint_resp.json()
             sprint_name = sprint.get("name", f"sprint_{sprint_id_input}")
 
-            # 1. Extract test cases from Confluence doc (in sprint goal)
+            #  Extracting test cases from Confluence doc in goal section
             goal = sprint.get("goal", "")
             match = re.search(r"https://[^\s]+/wiki[^\s]*", goal)
             if match:
@@ -149,7 +150,7 @@ def automate_specific_sprint_by_id(board_name_input, sprint_id_input):
                                 processed.add(page_id)
                                 updated = True
 
-            # 2. Extract test cases from each issue (summary, description, txt files)
+         # Extracting test cases from each issue (summary, description, txt files)
             issues = requests.get(f"{JIRA_BASE}/rest/agile/1.0/sprint/{sprint_id_input}/issue", auth=auth).json().get("issues", [])
             for issue in issues:
                 key = issue["key"]
